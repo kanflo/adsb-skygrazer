@@ -1,0 +1,18 @@
+; Config file ADSB as Art
+; THis file is used on the Raspberry Pi Macintosh Classic
+
+[mqtt]
+host = gateway.local
+port = 1883
+
+
+[downloads] ; Downloaded plane images go here
+path = /mnt/imagecache/adsb-imagecache
+
+
+[egalax] ; Default eGalax calibration
+enabled = true
+left = 100
+top = 290
+right = 3696
+bottom = 3621
