@@ -2,7 +2,7 @@
 
 CC=g++
 TARGET=adsb-scope
-UIGUIDIR=uigui
+UIGUIDIR=sdl2-simple-ui
 
 SOURCE = adsb-scope.cpp curl_fopen.cpp INIReader.cpp ini.cpp
 
