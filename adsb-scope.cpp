@@ -353,6 +353,10 @@ int main(int argc, char ** argv)
 	(void) SDL_RegisterEvents(1); // First call seem to return SDL_USEREVENT :-/
 	SDL_ShowCursor(0);
 	
+	time_t t;
+	srand((unsigned) time(&t));
+	lib_init(); // mosquittopp
+
 	SDL_Event event;
 	SDL_Point *p = NULL;
 	SDL_Color bgColor = {0, 0, 0, 255};
@@ -364,7 +368,10 @@ int main(int argc, char ** argv)
 	printf("Creating UI\n");
 	UIGUI *ui = new UIGUI(SCREEN_WIDTH, SCREEN_HEIGHT);
 	printf("Creating screen\n");
-	MQTTScreen *screen = new MQTTScreen(ui, "sdl/mqtt", gMQTTServer.c_str(), gMQTTPort, kMQTTMessage);
+
+	char clientId[32];
+	snprintf((char*) clientId, sizeof(clientId), "adsbscope-%d", rand());
+	MQTTScreen *screen = new MQTTScreen(ui, (char*) clientId, gMQTTServer.c_str(), gMQTTPort, kMQTTMessage);
 	EGalax *eGalax = new EGalax();
 	if (gEGalaxEnabled) {
 		printf("Connecting to eGalax : ");
@@ -473,5 +480,7 @@ int main(int argc, char ** argv)
 		}
 	} while(event.user.code != event_Quit);
 	delete ui;
+
+	lib_cleanup(); // mosquittopp
 	return 0;
 }
