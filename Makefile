@@ -7,6 +7,7 @@ UIGUIDIR=sdl2-simple-ui
 SOURCE = adsb-scope.cpp curl_fopen.cpp INIReader.cpp ini.cpp
 
 SOURCE += $(UIGUIDIR)/UIControl.cpp \
+	$(UIGUIDIR)/UITextField.cpp \
 	$(UIGUIDIR)/UIButton.cpp \
 	$(UIGUIDIR)/UICaption.cpp \
 	$(UIGUIDIR)/UIElement.cpp \
@@ -41,7 +42,7 @@ SDL_LIB = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf
 SDL_INCLUDE = `sdl2-config --cflags`
 # -I/usr/local/include/SDL2
 # You may need to change -std=c++11 to -std=c++0x if your compiler is a bit older
-CFLAGS = -Wall -std=c++0x $(SDL_INCLUDE) -Wall -ggdb -I/usr/local/include -Iuigui
+CFLAGS = -Wall -std=c++0x $(SDL_INCLUDE) -Wall -ggdb -I/usr/local/include -I$(UIGUIDIR)
 LDFLAGS = $(SDL_LIB) -L/usr/local/lib
 
 # libusb 1.0 (include location may vary)
