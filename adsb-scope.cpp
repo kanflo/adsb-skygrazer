@@ -149,6 +149,7 @@ static bool readIniFile()
 
 static void handleADSBImage(string url, CURLDownloader *dloader, UIImageButton *planeImage)
 {
+	static string currentFileName = "";
 	string fileName;
 	string path;
 	int32_t found = url.find_last_of("/");
@@ -162,7 +163,11 @@ static void handleADSBImage(string url, CURLDownloader *dloader, UIImageButton *
 	if (!f) {
 		dloader->asyncDownload(url);
 	} else {
-		planeImage->loadImage(path);
+		if (currentFileName != fileName) {
+			// Image loading on the Raspberry Pi is slow, only load if neccessary
+			planeImage->loadImage(path);
+			currentFileName = fileName;
+		}
 	}
 }
 
@@ -211,131 +216,150 @@ static void handleMQTTMessage(SDL_Event *event, CURLDownloader *dloader, UIImage
 {
 	char *topic = (char*) event->user.data1;
 	char *payload = (char*) event->user.data2;
-	printf("> Topic:%s | %s\n", topic, payload);
+//	printf("> Topic:%s | %s\n", topic, payload);
 
-	if (!strcmp(topic, "/adsb/proximity/json")) {
-	    json_t *root, *data;
-	    json_error_t error;
+	do {
+		if (!strcmp(topic, "/adsb/proximity/json")) {
+			bool lost = false;
+		    json_t *root, *data;
+		    json_error_t error;
 
-		int timestamp;
-		double distance;
-		const char *origin = 0, *destination = 0;
-		
-		string distanceString = "";
-		string aircraftTypeString = "";
-		string altitudeString = "";
-		string headingString = "";
+			int timestamp;
+			double distance;
+			const char *origin = 0, *destination = 0;
+			string distanceString = "";
+			string aircraftTypeString = "";
+			string altitudeString = "";
+			string headingString = "";
+			string routeString = "";
 
-//	    payload = "{\"bearing\": 116, \"distance\": \"32.91\", \"destination\": \"ARN\", \"vspeed\": 0, \"speed\": 466, \"image\": \"http://img.planespotters.net/photo/437000/original/D-AIZO-Lufthansa-Airbus-A320-200_PlanespottersNet_437547.jpg\", \"registration\": \"D-AIZO\", \"lon\": 13.82638, \"operator\": \"Lufthansa\", \"heading\": 32, \"lat\": 55.53561, \"callsign\": \"LH808\", \"time\": 1417728572, \"icao24\": \"3C674F\", \"type\": \"Airbus A320-214\", \"altitude\": 37025, \"origin\": \"FRA\"}";
+	//	    payload = "{\"bearing\": 116, \"distance\": \"32.91\", \"destination\": \"ARN\", \"vspeed\": 0, \"speed\": 466, \"image\": \"http://img.planespotters.net/photo/437000/original/D-AIZO-Lufthansa-Airbus-A320-200_PlanespottersNet_437547.jpg\", \"registration\": \"D-AIZO\", \"lon\": 13.82638, \"operator\": \"Lufthansa\", \"heading\": 32, \"lat\": 55.53561, \"callsign\": \"LH808\", \"time\": 1417728572, \"icao24\": \"3C674F\", \"type\": \"Airbus A320-214\", \"altitude\": 37025, \"origin\": \"FRA\"}";
 
-	    root = json_loads(payload, 0, &error);
-	    if (!root) {
-	        printf("ERROR: JSON decode error on line %d: %s\n", error.line, error.text);
-	        return;
-	    }
+		    root = json_loads(payload, 0, &error);
+		    if (!root) {
+		        printf("ERROR: JSON decode error on line %d: %s\n", error.line, error.text);
+		        return;
+		    }
 
-		timestamp = json_integer_value(json_object_get(root, "time"));
-		if (time(0) > timestamp + 60) {
-			printf("### Data is old\n");;
-		}
-
-		// Extract image URL
-		data = json_object_get(root, "image");
-	    if (json_is_string(data)) {
-			handleADSBImage(json_string_value(data), dloader, planeImage);
-		}
-
-		// Extract distance
-		data = json_object_get(root, "distance");
-	    if (json_is_real(data)) {
-			char buff[100];
-			distance = json_real_value(data);
-			if (distance < 1) {
-				sprintf((char*) buff, "%d m", (int) distance*1000);
-			} else {
-				sprintf((char*) buff, "%.1f km", distance);
+			timestamp = json_integer_value(json_object_get(root, "time"));
+			if (time(0) > timestamp + 60) {
+				printf("### Data is old\n");
+				break;
 			}
-			distanceString = buff;
-		} else {
-			printf("Error: distance is not a real\n");
-		}
 
-		// Extract bearing
-		data = json_object_get(root, "bearing");
-	    if (json_integer_value(data)) {
-			distanceString += " ";
-			distanceString += degreeToString(json_integer_value(data));
-		}
+			// Check if we lost the current plane
+			data = json_object_get(root, "lost");
+		    if (json_is_integer(data)) {
+		    	lost = json_integer_value(data);
+			}
 
-		// Extract altitude
-		data = json_object_get(root, "altitude");
-	    if (json_integer_value(data)) {
-			char buff[100];
-			sprintf((char*) buff, "%u ft", (int32_t) json_integer_value(data));
-			altitudeString = buff;
-		}
+			// Extract image URL
+			data = json_object_get(root, "image");
+		    if (!lost && json_is_string(data)) {
+				handleADSBImage(json_string_value(data), dloader, planeImage);
+			}
 
-		// Extract speed
-		data = json_object_get(root, "speed");
-	    if (json_integer_value(data)) {
-			char buff[100];
-			sprintf((char*) buff, "   %d kt", (int32_t) json_integer_value(data));
-			altitudeString += buff;
-		}
+			// Extract distance
+			data = json_object_get(root, "distance");
+		    if (json_is_real(data)) {
+				char buff[100];
+				distance = json_real_value(data);
+				if (distance < 1) {
+					sprintf((char*) buff, "%d m", (int) distance*1000);
+				} else {
+					sprintf((char*) buff, "%.1f km", distance);
+				}
+				distanceString = buff;
+			} else {
+				printf("Error: distance is not a real\n");
+			}
 
-		// Extract heading
-		data = json_object_get(root, "heading");
-	    if (json_integer_value(data)) {
-			headingString = "Hdg ";
-			headingString += degreeToString(json_integer_value(data));
-		}
+			// Extract bearing
+			data = json_object_get(root, "bearing");
+		    if (json_integer_value(data)) {
+				distanceString += " ";
+				distanceString += degreeToString(json_integer_value(data));
+			}
 
-		// Extract aircraft type
-		data = json_object_get(root, "type");
-	    if (json_is_string(data)) {
-			aircraftTypeString = json_string_value(data);
-		}
+			// Extract altitude
+			data = json_object_get(root, "altitude");
+		    if (json_integer_value(data)) {
+				char buff[100];
+				sprintf((char*) buff, "%u ft", (int32_t) json_integer_value(data));
+				altitudeString = buff;
+			}
 
-		// Extract origin and destination
-		data = json_object_get(root, "destination");
-	    if (json_is_string(data)) {
-			destination = json_string_value(data);
-			data = json_object_get(root, "origin");
+			// Extract speed
+			data = json_object_get(root, "speed");
+		    if (json_integer_value(data)) {
+				char buff[100];
+				sprintf((char*) buff, "   %d kt", (int32_t) json_integer_value(data));
+				altitudeString += buff;
+			}
+
+			// Extract heading
+			data = json_object_get(root, "heading");
+		    if (json_integer_value(data)) {
+				headingString = "Hdg ";
+				headingString += degreeToString(json_integer_value(data));
+			}
+
+			// Extract aircraft type
+			data = json_object_get(root, "type");
 		    if (json_is_string(data)) {
-				origin = json_string_value(data);
+				aircraftTypeString = json_string_value(data);
 			}
-			if (origin && destination && strlen(origin) > 0 && strlen(destination) > 0) {
-				string s = origin;
-				s += " > ";
-				s += destination;
-				gRoute->setCaption(s.c_str());
-			} else {
+
+			// Extract origin and destination
+			data = json_object_get(root, "destination");
+		    if (json_is_string(data)) {
+				destination = json_string_value(data);
+				data = json_object_get(root, "origin");
+			    if (json_is_string(data)) {
+					origin = json_string_value(data);
+				}
+				if (origin && destination && strlen(origin) > 0 && strlen(destination) > 0) {
+					string s = origin;
+					s += " > ";
+					s += destination;
+					routeString = s;
+				}
+			}
+
+	    	if (lost) {
+	    		printf("Plane was lost\n");
+				planeImage->loadImage("./black.png");
+				gDistanceBearing->setCaption("");
+				gAircraftType->setCaption("");
+				gAltitudeSpeed->setCaption("");
+				gHeading->setCaption("");
 				gRoute->setCaption("");
-			}
+	    	} else {
+				gDistanceBearing->setCaption(distanceString);
+				gAircraftType->setCaption(aircraftTypeString);
+				gAltitudeSpeed->setCaption(altitudeString);
+				gHeading->setCaption(headingString);
+				gRoute->setCaption(routeString);
+	    	}
+
+
+			/*	
+				// json_real_value / json_is_real
+			    if(!json_is_string(speed)) {
+			        fprintf(stderr, "error: speed %p is not a string %s\n", speed, json_string_value(speed));
+			    }
+			    if(!json_is_number(speed)) {
+			        fprintf(stderr, "error: speed %p is not a number %s\n", speed, json_integer_value(speed));
+			        return 1;
+			    }
+
+				printf("Speed : %d\n", json_integer_value(speed));
+			*/
+		    json_decref(root);
+		} else {
+			printf("Unknown topic:%s\n", topic);
 		}
-
-		gDistanceBearing->setCaption(distanceString);
-		gAircraftType->setCaption(aircraftTypeString);
-		gAltitudeSpeed->setCaption(altitudeString);
-		gHeading->setCaption(headingString);
-
-		/*	
-			// json_real_value / json_is_real
-		    if(!json_is_string(speed)) {
-		        fprintf(stderr, "error: speed %p is not a string %s\n", speed, json_string_value(speed));
-		    }
-		    if(!json_is_number(speed)) {
-		        fprintf(stderr, "error: speed %p is not a number %s\n", speed, json_integer_value(speed));
-		        return 1;
-		    }
-
-			printf("Speed : %d\n", json_integer_value(speed));
-		*/
-	    json_decref(root);
-	} else {
-		printf("Unknown topic:%s\n", topic);
-	}
-
+	} while(0);
 	if (event->user.data1) {
 		free(event->user.data1);
 	}

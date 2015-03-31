@@ -24,7 +24,7 @@ static int cURLDownloadThread(void *ptr)
 		goto fail;
 	}
 	fileName = url.substr(found+1);
-	
+
 	localPath = downloader->getSavePath() + "/" +  fileName;
 	downloadPath = localPath + ".download";
 
@@ -59,9 +59,10 @@ static int cURLDownloadThread(void *ptr)
 fail:
 	success = false;
 	unlink(downloadPath.c_str());
+	goto done;
 finish:
 	rename(downloadPath.c_str(), localPath.c_str());
-
+done:
 	event.type = downloader->getEventType();
 	event.user.code = success;
 	event.user.data1 = (void*) localPath.c_str();
