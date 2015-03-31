@@ -18,3 +18,7 @@ sudo apt-get install libusb-1.0.0-dev
 
 ; curl
 sudo apt-get install libcurl4-openssl-dev
+
+Running using Valgrind:
+
+make && valgrind --leak-check=full  --show-reachable=yes --show-leak-kinds=all --track-origins=yes ./adsb-scope 
