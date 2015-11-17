@@ -1,5 +1,5 @@
 #!/bin/bash
 #
-# As adsb-scope crashes on the Raspberry Pi, run a loop...
+# As skygrazer crashes on the Raspberry Pi, run a loop...
 
-while true; do ./adsb-scope ; done
+while true; do ./skygrazer ; done

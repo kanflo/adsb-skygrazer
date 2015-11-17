@@ -1,10 +1,10 @@
 # http://stackoverflow.com/a/1139628/2856519
 
 CC=g++
-TARGET=adsb-scope
+TARGET=skygrazer
 UIGUIDIR=sdl2-simple-ui
 
-SOURCE = adsb-scope.cpp curl_fopen.cpp INIReader.cpp ini.cpp
+SOURCE = skygrazer.cpp curl_fopen.cpp INIReader.cpp ini.cpp
 
 SOURCE += $(UIGUIDIR)/UIControl.cpp \
 	$(UIGUIDIR)/UITextField.cpp \

@@ -1,7 +1,7 @@
-ADS-B as Art!
+skygrazer
 
 Listens to the ADS-B json feed and displays a pretty image of the nearest
-aircraft. Install dependencies, build, copy adsb-scope.ini to /etc and
+aircraft. Install dependencies, build, copy skygrazer.ini to /etc and
 take off.
 
 
@@ -21,4 +21,4 @@ sudo apt-get install libcurl4-openssl-dev
 
 Running using Valgrind:
 
-make && valgrind --leak-check=full  --show-reachable=yes --show-leak-kinds=all --track-origins=yes ./adsb-scope 
+make && valgrind --leak-check=full  --show-reachable=yes --show-leak-kinds=all --track-origins=yes ./skygrazer 

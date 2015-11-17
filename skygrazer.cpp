@@ -126,10 +126,10 @@ static bool writeTouchConfig(SDL_Rect &eGalaxCalib)
 
 static bool readIniFile()
 {
-    INIReader reader("/etc/adsb-scope.ini");
+    INIReader reader("/etc/skygrazer.ini");
 
     if (reader.ParseError() < 0) {
-//      std::cout << "Can't load '/etc/adsb-scope.ini'\n";
+//      std::cout << "Can't load '/etc/skygrazer.ini'\n";
         return false;
     }
 
@@ -357,7 +357,7 @@ static void handleMQTTMessage(SDL_Event *event, CURLDownloader *dloader, UIImage
 int main(int argc, char ** argv)
 {
     if (!readIniFile()) {
-        printf("Please copy adsb-scope.ini to /etc\n");
+        printf("Please copy skygrazer.ini to /etc\n");
         exit(1);
     }
     (void) SDL_RegisterEvents(1); // First call seem to return SDL_USEREVENT :-/
@@ -380,7 +380,7 @@ int main(int argc, char ** argv)
     printf("Creating screen\n");
 
     char clientId[32];
-    snprintf((char*) clientId, sizeof(clientId), "adsbscope-%d", rand());
+    snprintf((char*) clientId, sizeof(clientId), "skygrazer-%d", rand());
     MQTTScreen *screen = new MQTTScreen(ui, (char*) clientId, gMQTTServer.c_str(), gMQTTPort, kMQTTMessage);
     EGalax *eGalax = new EGalax();
     if (gEGalaxEnabled) {
