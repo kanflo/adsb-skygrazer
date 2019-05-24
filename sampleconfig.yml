@@ -1,0 +1,17 @@
+#
+# Sample Skygrazer configuration file.
+
+[DEFAULT]
+TempDir = .
+ImageDir = images
+
+[UI]
+fullscreen = True
+# If omitted, we will use Pygame to determine screen size
+#screen_width = 1280
+#screen_height = 1024
+font_size = 72
+
+[MQTT]
+MQTTBroker = nano.local
+MQTTProximityTopic = /adsb/proximity/json
