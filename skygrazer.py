@@ -117,6 +117,15 @@ from urllib.parse import urlparse
 import hashlib
 import os.path
 import glob
+import threading
+try:
+    from dateutil.parser import parse
+except ImportError:
+    print('sudo -H pip3 install python-dateutil')
+    sys.exit(1)
+
+# Function to get current time in milliseconds
+current_milli_time = lambda: int(round(time.time() * 1000))
 
 
 # Last received ADSB message
@@ -156,7 +165,29 @@ def headless_init():
             raise Exception('No suitable video driver found!')
 
 
+
+set_mode_done = False
+
+# Rationale: sometimes pygame.display.set_mode(...) hangs forever and pressing
+# ctrl-c exits whatever is keeping us and resumes normal operation. As we are
+# running 'headlessly' we need to do this programatically
+def display_set_mode_watchdog():
+    import os
+    import signal
+    global set_mode_done
+    time.sleep(5)
+    if not set_mode_done:
+        logging.info("SININT:ing myself...")
+        os.kill(os.getpid(), signal.SIGINT)
+
+
 def pygame_init():
+    global set_mode_done
+    set_mode_done = False
+
+    x = threading.Thread(target = display_set_mode_watchdog)
+    x.start()
+
     fullscreen = True
     screen_width = None
     screen_height = None
@@ -185,7 +216,9 @@ def pygame_init():
         screen_height = info.current_h
 
     if fullscreen:
+        # Sometimes we hang here and need to ctrl-c
         screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
+        set_mode_done = True
         pygame.mouse.set_visible(False)
     else:
         screen = pygame.display.set_mode((screen_width, screen_height))
@@ -335,9 +368,148 @@ def fill_rect(x, y, width, height):
     s.fill(colour, r)
 
 
+import io
+import subprocess
+
+
+#display_width = 1024
+#display_height = 768
+swapped = True
+x1 = 106
+y1 = 126
+x2 = 1933
+y2 = 1860
+
+touch_coordinates = []
+
+# Allow this much between (min and avg) or (avg and max) to interpret the
+# touch as a stright line
+avg_line_tolerance = 30
+
+# Minimum number of coordinates for us to check if the toch was a straight line
+min_coordinates = 10
+
+debug = False
+
+EVENT_DOWN  = 1
+EVENT_UP    = 2
+EVENT_LEFT  = 4
+EVENT_RIGHT = 8
+
+def handle_touch_event(event, pos, length):
+    if event == EVENT_DOWN:
+        print("Down  l:%4d x:%d" % (length, pos))
+        if pos > 980:
+            os.system("aplay -Dhw:1,0 /home/pi/quadra.wav")
+    elif event == EVENT_UP:
+        print("Up    l:%4d x:%4d" % (length, pos))
+    elif event == EVENT_LEFT:
+        print("Left  l:%4d y:%4d" % (length, pos))
+        if pos > 740 and length > 990:
+            print("HALT")
+    elif event == EVENT_RIGHT:
+        print("Right  l:%4d y:%4d" % (length, pos))
+        if pos > 740 and length > 900:
+            os.system("sudo halt")
+
+def handle_touches(coords):
+    if len(coords) < min_coordinates:
+        return
+    sum_x = 0
+    sum_y = 0
+    min_x = 999999
+    min_y = 999999
+    max_x = 0
+    max_y = 0
+    count = 0
+    if debug:
+        print("# %d" % len(coords))
+    for c in coords:
+        sum_x += c[0]
+        sum_y += c[1]
+        count += 1
+        if c[0] < min_x:
+            min_x = c[0]
+        if c[0] > max_x:
+            max_x = c[0]
+        if c[1] < min_y:
+            min_y = c[1]
+        if c[1] > max_y:
+            max_y = c[1]
+    avg_x = sum_x / count
+    avg_y = sum_y / count
+    if debug:
+        print("X: %4d  %4d  %4d  " % (int(min_x), int(avg_x), int(max_x)))
+        print("Y: %4d  %4d  %4d  " % (int(min_y), int(avg_y), int(max_y)))
+    if (avg_x - avg_line_tolerance  < min_x and avg_x + avg_line_tolerance  > max_x):
+        length = abs(coords[0][1] - coords[-1][1])
+        if coords[0][1] < coords[-1][1]:
+            handle_touch_event(EVENT_DOWN, avg_x, length)
+        else:
+            handle_touch_event(EVENT_UP, avg_x, length)
+    elif (avg_y - avg_line_tolerance  < min_y and avg_y + avg_line_tolerance  > max_y):
+        length = abs(coords[0][0] - coords[-1][0])
+        if coords[0][0] < coords[-1][0]:
+            handle_touch_event(EVENT_RIGHT, avg_y, length)
+        else:
+            handle_touch_event(EVENT_LEFT, avg_y, length)
+
+def touches(display_width, display_height):
+    global touch_coordinates
+
+    init_ok = False
+    proc = subprocess.Popen(["evtest /dev/input/event1"], stdout = subprocess.PIPE, shell = True)
+    # @todo: why not ["evtest", "/dev/input/event1"] ?
+    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
+#        logging.debug(line.strip())
+        #print(line)
+        touched = False
+        if "eGalax" in line:
+            logging.debug("Found touch controller")
+        elif "Testing ... (interrupt to exit)" in line:
+            init_ok = True
+        if init_ok:
+            if "(BTN_TOUCH), value 1" in line:
+                x = None
+                touch_coordinates = []
+                logging.debug("Down")
+                y = None
+            elif "(BTN_TOUCH), value 0" in line:
+                logging.debug("Up")
+                handle_touches(touch_coordinates)
+                touch_coordinates = []
+            elif "ABS_X" in line:
+                if swapped:
+                    y = int(line.split(" ")[-1])
+                else:
+                    x = int(line.split(" ")[-1])
+                touched = True
+            elif "ABS_Y" in line:
+                if swapped:
+                    x = int(line.split(" ")[-1])
+                else:
+                    y = int(line.split(" ")[-1])
+                touched = True
+
+            if touched and x and y:
+                x_screen = int(display_width  * (x - x1) / (x2 - x1))
+                y_screen = int(display_height * (y - y1) / (y2 - y1))
+                touch_coordinates.append((x_screen, y_screen))
+                logging.debug("%4d, %4d" % (x_screen, y_screen))
+    #        else:
+    #            print(line.strip())
+
+
 def main():
     global config
     global adsb_message
+    global touch_coordinates
+    r = 0
+    g = 64
+    b = 128
+    r_inc = 10
+    g_inc = 8
+    b_inc = 12
     try:
         url = None
         image = None
@@ -354,29 +526,18 @@ def main():
             sys.exit(1)
 
         level = logging.DEBUG if args.verbose else logging.WARNING
-
         log_formatter = logging.Formatter('%(asctime)s %(levelname)s %(funcName)s(%(lineno)d) %(message)s')
-        logFile = config["DEFAULT"]["TempDir"] + ("/skygrazer.log")
-        try:
-            my_handler = RotatingFileHandler(logFile, mode='a', maxBytes=100*1024, backupCount=1, encoding=None, delay=0)
-        except FileNotFoundError:
-            print("Failed to create %s" % logFile)
-            sys.exit(1)
-
-        my_handler.setFormatter(log_formatter)
         app_log = logging.getLogger()
-        app_log.addHandler(my_handler)
         app_log.setLevel(level)
-
-        if args.verbose:
-            consoleHandler = logging.StreamHandler()
-            consoleHandler.setFormatter(log_formatter)
-            app_log.addHandler(consoleHandler)
+        consoleHandler = logging.StreamHandler()
+        consoleHandler.setFormatter(log_formatter)
+        app_log.addHandler(consoleHandler)
 
         logging.debug('---------------------------------------------------------')
         logging.debug('Skygrazer started')
 
         screen = pygame_init()
+        logging.debug('PyGame inited')
         clock = pygame.time.Clock()
 
         white = (255, 255, 255)
@@ -402,6 +563,9 @@ def main():
             screen_height = int(config["UI"]["screen_height"])
         else:
             screen_height = info.current_h
+
+        x = threading.Thread(target = touches, args=(screen_width, screen_height,))
+        x.start()
 
         bridge = mybridge(host = config["MQTT"]["MQTTBroker"], mqtt_topic = config["MQTT"]["MQTTProximityTopic"], port = 1883, client_id = "skygrazer-%d" % (random.randint(0, 65535)), user_id = None, password = None)
 
@@ -431,16 +595,19 @@ def main():
                 screen.fill((0, 0, 0))
 
             if adsb_message:
+                # todo: remember old message, calculcate diff and update accordingly
+                drawing_start = current_milli_time()
                 last_message = datetime.datetime.now().timestamp()
                 screen.fill((0, 0, 0))
 
-                """
-                @todo: only fill screen if the plane type, plane image or destination changed
-                """
                 if adsb_message.image:
                     if adsb_message.image != url:
                         url = adsb_message.image
-                        image = load_image(adsb_message.icao24, url)
+                        try:
+                            image = load_image(adsb_message.icao24, url)
+                        except Exception as e:
+                            logging.error("Exception occurred", exc_info = True)
+                            image = None
                         if image:
                             (w, h) = image.get_size()
                             ratio = w / h
@@ -465,15 +632,9 @@ def main():
                 if 1: # Clear lower area for flight data
                     fill_rect(0, screen_height - font_height, screen_width, font_height)
 
-                """
-                @todo: only blit if plane type changed
-                """
                 if adsb_message.type:
                     blit_outlined_text(screen, font, adsb_message.type, margin, 0, white, black)
 
-                    """
-                    @todo: only blit if origin or destination changed
-                    """
                     try:
                         route = "%s > %s" % (adsb_message.route.origin.city, adsb_message.route.destination.city)
                         blit_outlined_text(screen, font, route, hdg_x + 1, 1, white, black, "right")
@@ -498,7 +659,42 @@ def main():
                 if adsb_message.heading:
                     blit_text(screen, font, "Hdg %s" % degree2str(adsb_message.heading), hdg_x, y, white, "right")
 
+
+                drawing_end = current_milli_time()
+                if config["DEFAULT"]["Debug"]:
+                    fill_rect(0, screen_height - 2*font_height, screen_width, font_height)
+                    #prox_message_age = time.time() - adsb_message.time
+                    adsb_message_age = time.time() - datetime.datetime.timestamp(parse(adsb_message.loggedDate))
+                    blit_text(screen, font, "Drawing: %dms" % (drawing_end - drawing_start), 10, screen_height - 2*font_height, white, "left")
+                    blit_text(screen, font, "Age: %ds" % (adsb_message_age), screen_width - 10, screen_height - 2*font_height, white, "right")
+
                 adsb_message = None
+
+            for c in touch_coordinates:
+                r += r_inc
+                g += g_inc
+                b += b_inc
+                if r > 255:
+                    r = 255
+                    r_inc = -r_inc
+                if r < 50:
+                    r = 50
+                    r_inc = -r_inc
+
+                if g > 255:
+                    g = 255
+                    g_inc = -g_inc
+                if g < 50:
+                    g = 50
+                    g_inc = -g_inc
+
+                if b > 255:
+                    b = 255
+                    b_inc = -b_inc
+                if b < 50:
+                    b = 50
+                    b_inc = -b_inc
+                pygame.draw.circle(screen, (r, g, b), (c[0], c[1]), 10)
 
             pygame.display.flip()
             clock.tick(500)
