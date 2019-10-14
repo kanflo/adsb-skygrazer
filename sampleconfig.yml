@@ -1,0 +1,38 @@
+#
+# Sample Skygrazer configuration file.
+#
+
+[DEFAULT]
+
+# This is where we store images and the log file. Create a RAM disk that is
+# persistent across reboots (well, the concept of a RAM disk, obviously not
+# the content ;) using ./create-ramdisk.sh
+TempDir = .
+
+# Images are downloaded here
+ImageDir = /home/pi/adsb-imagecache
+
+# Print debugging information on screen
+Debug = True
+
+[UI]
+
+# Open window of full screen
+fullscreen = True
+
+# If omitted, we will use Pygame to determine screen size
+#screen_width = 1280
+#screen_height = 1024
+font_size = 50
+
+[MQTT]
+MQTTBroker = nano.local
+MQTTProximityTopic = /adsb/proximity/json
+
+
+[PUSHOVER]
+PushoverEnable = no
+PushoverTitle = Skygrazer
+PushoverUser = <useruseruser>
+PushoverToken = <tokentokentoken>
+PushoverDevice = <devicedevicedevice>
