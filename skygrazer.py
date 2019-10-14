@@ -117,6 +117,15 @@ from urllib.parse import urlparse
 import hashlib
 import os.path
 import glob
+import threading
+try:
+    from dateutil.parser import parse
+except ImportError:
+    print('sudo -H pip3 install python-dateutil')
+    sys.exit(1)
+
+# Function to get current time in milliseconds
+current_milli_time = lambda: int(round(time.time() * 1000))
 
 
 # Last received ADSB message
@@ -156,7 +165,29 @@ def headless_init():
             raise Exception('No suitable video driver found!')
 
 
+
+set_mode_done = False
+
+# Rationale: sometimes pygame.display.set_mode(...) hangs forever and pressing
+# ctrl-c exits whatever is keeping us and resumes normal operation. As we are
+# running 'headlessly' we need to do this programatically
+def display_set_mode_watchdog():
+    import os
+    import signal
+    global set_mode_done
+    time.sleep(5)
+    if not set_mode_done:
+        logging.info("SININT:ing myself...")
+        os.kill(os.getpid(), signal.SIGINT)
+
+
 def pygame_init():
+    global set_mode_done
+    set_mode_done = False
+
+    x = threading.Thread(target = display_set_mode_watchdog)
+    x.start()
+
     fullscreen = True
     screen_width = None
     screen_height = None
@@ -185,7 +216,9 @@ def pygame_init():
         screen_height = info.current_h
 
     if fullscreen:
+        # Sometimes we hang here and need to ctrl-c
         screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
+        set_mode_done = True
         pygame.mouse.set_visible(False)
     else:
         screen = pygame.display.set_mode((screen_width, screen_height))
@@ -431,6 +464,8 @@ def main():
                 screen.fill((0, 0, 0))
 
             if adsb_message:
+                # todo: remember old message, calculcate diff and update accordingly
+                drawing_start = current_milli_time()
                 last_message = datetime.datetime.now().timestamp()
                 screen.fill((0, 0, 0))
 
@@ -440,7 +475,11 @@ def main():
                 if adsb_message.image:
                     if adsb_message.image != url:
                         url = adsb_message.image
-                        image = load_image(adsb_message.icao24, url)
+                        try:
+                            image = load_image(adsb_message.icao24, url)
+                        except Exception as e:
+                            logging.error("Exception occurred", exc_info = True)
+                            image = None
                         if image:
                             (w, h) = image.get_size()
                             ratio = w / h
@@ -465,15 +504,9 @@ def main():
                 if 1: # Clear lower area for flight data
                     fill_rect(0, screen_height - font_height, screen_width, font_height)
 
-                """
-                @todo: only blit if plane type changed
-                """
                 if adsb_message.type:
                     blit_outlined_text(screen, font, adsb_message.type, margin, 0, white, black)
 
-                    """
-                    @todo: only blit if origin or destination changed
-                    """
                     try:
                         route = "%s > %s" % (adsb_message.route.origin.city, adsb_message.route.destination.city)
                         blit_outlined_text(screen, font, route, hdg_x + 1, 1, white, black, "right")
@@ -497,6 +530,15 @@ def main():
                             blit_text(screen, arrows, "D", alt_x + tx, y + 2, white)
                 if adsb_message.heading:
                     blit_text(screen, font, "Hdg %s" % degree2str(adsb_message.heading), hdg_x, y, white, "right")
+
+
+                drawing_end = current_milli_time()
+                if config["DEFAULT"]["Debug"]:
+                    fill_rect(0, screen_height - 2*font_height, screen_width, font_height)
+                    #prox_message_age = time.time() - adsb_message.time
+                    adsb_message_age = time.time() - datetime.datetime.timestamp(parse(adsb_message.loggedDate))
+                    blit_text(screen, font, "Drawing: %dms" % (drawing_end - drawing_start), 10, screen_height - 2*font_height, white, "left")
+                    blit_text(screen, font, "Age: %ds" % (adsb_message_age), screen_width - 10, screen_height - 2*font_height, white, "right")
 
                 adsb_message = None
 
