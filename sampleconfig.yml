@@ -13,7 +13,7 @@ TempDir = .
 ImageDir = /home/pi/adsb-imagecache
 
 # Print debugging information on screen
-Debug = True
+Debug = False
 
 [UI]
 
