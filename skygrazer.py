@@ -198,7 +198,7 @@ def pygame_init():
         if "screen_height" in config["UI"]:
             screen_height = int(config["UI"]["screen_height"])
         if "fullscreen" in config["UI"]:
-            fullscreen = config["UI"]["fullscreen"] == "True"
+            fullscreen = config["UI"]["fullscreen"].lower() in ['true', '1', 't', 'y', 'yes']
 
 #    headless_init()
 #    os.putenv('SDL_VIDEODRIVER', 'fbcon')
@@ -533,7 +533,7 @@ def main():
 
 
                 drawing_end = current_milli_time()
-                if config["DEFAULT"]["Debug"]:
+                if config["DEFAULT"]["Debug"].lower() in ['true', '1', 't', 'y', 'yes']:
                     fill_rect(0, screen_height - 2*font_height, screen_width, font_height)
                     #prox_message_age = time.time() - adsb_message.time
                     adsb_message_age = time.time() - datetime.datetime.timestamp(parse(adsb_message.loggedDate))
